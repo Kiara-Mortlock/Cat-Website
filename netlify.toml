@@ -1,0 +1,5 @@
+# Netlify settings: the website's pages live in the public folder.
+# Netlify only serves these files; the Node server and database (server.js) need a separate host.
+[build]
+  publish = "public"
+  command = ""
