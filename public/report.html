@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales report · Selling Cats</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Nunito:wght@400;600;700;800&display=swap">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header id="site-nav"></header>
+
+    <main class="page">
+        <div class="report-head">
+            <div>
+                <h1>Sales report</h1>
+                <p>See how many cats you sell, and how fast the shop is growing.</p>
+            </div>
+        </div>
+
+        <!-- ---------- Sales over time ---------- -->
+        <section class="panel" style="margin-bottom: 16px">
+            <h2>Sales over time</h2>
+            <p class="sub" id="trend-sub">Loading…</p>
+
+            <div class="controls">
+                <div class="control">
+                    <span>Show by</span>
+                    <div class="segmented" id="group">
+                        <button type="button" data-group="day">Day</button>
+                        <button type="button" data-group="month">Month</button>
+                        <button type="button" data-group="year">Year</button>
+                    </div>
+                </div>
+                <div class="control"><span>From</span><div id="from"></div></div>
+                <div class="control"><span>To</span><div id="to"></div></div>
+                <div class="control">
+                    <span>Quick pick</span>
+                    <div class="chips" id="presets">
+                        <button type="button" class="chip" data-preset="30d">Last 30 days</button>
+                        <button type="button" class="chip" data-preset="12m">Last 12 months</button>
+                        <button type="button" class="chip" data-preset="5y">Last 5 years</button>
+                        <button type="button" class="chip" data-preset="all">All time</button>
+                    </div>
+                </div>
+            </div>
+            <p id="trend-error" class="error" hidden></p>
+
+            <div class="tiles">
+                <div class="tile hero-tile">
+                    <div class="label">Cats sold</div>
+                    <div class="value" id="t-total">–</div>
+                    <div class="delta" id="t-total-sub"></div>
+                </div>
+                <div class="tile">
+                    <div class="label">Growth</div>
+                    <div class="value" id="t-growth">–</div>
+                    <div class="delta" id="t-growth-sub"></div>
+                </div>
+                <div class="tile">
+                    <div class="label">Money from sales</div>
+                    <div class="value" id="t-revenue">–</div>
+                    <div class="delta" id="t-revenue-sub"></div>
+                </div>
+                <div class="tile">
+                    <div class="label" id="t-best-label">Best period</div>
+                    <div class="value" id="t-best">–</div>
+                    <div class="delta" id="t-best-sub"></div>
+                </div>
+            </div>
+
+            <div class="legend" id="trend-legend"></div>
+            <div class="chart" id="trend-chart"></div>
+            <details>
+                <summary>Show as a table</summary>
+                <div class="table-scroll">
+                    <table>
+                        <thead><tr><th id="period-head">Period</th><th class="num">Cats sold</th><th class="num">Money from sales</th><th class="num">Growth</th></tr></thead>
+                        <tbody id="trend-table"></tbody>
+                    </table>
+                </div>
+            </details>
+        </section>
+
+        <!-- ---------- One month in detail ---------- -->
+        <div class="report-head">
+            <div>
+                <h2 style="margin: 0; font-size: 26px">Month in detail</h2>
+                <p id="subtitle">Loading…</p>
+            </div>
+            <div id="month"></div>
+        </div>
+
+        <div id="report" hidden>
+            <div class="tiles">
+                <div class="tile">
+                    <div class="label">Cats sold</div>
+                    <div class="value" id="sold-count"></div>
+                    <div class="delta" id="sold-delta"></div>
+                </div>
+                <div class="tile">
+                    <div class="label">Money from sales</div>
+                    <div class="value" id="revenue"></div>
+                    <div class="delta" id="average"></div>
+                </div>
+                <div class="tile">
+                    <div class="label">Still in the shop</div>
+                    <div class="value" id="stock"></div>
+                    <div class="delta" id="stock-detail"></div>
+                </div>
+            </div>
+
+            <div class="panels">
+                <section class="panel">
+                    <h2>Cats sold each day</h2>
+                    <p class="sub" id="daily-sub"></p>
+                    <div class="chart" id="daily-chart"></div>
+                </section>
+                <section class="panel">
+                    <h2>By breed</h2>
+                    <p class="sub">Cats sold this month</p>
+                    <ul class="breeds" id="breeds"></ul>
+                </section>
+            </div>
+
+            <section class="panel">
+                <h2>Cats sold this month</h2>
+                <p class="sub" id="sold-sub"></p>
+                <div class="table-scroll">
+                    <table>
+                        <thead><tr><th>Cat</th><th>Breed</th><th>Sold on</th><th class="num">Price</th></tr></thead>
+                        <tbody id="sold-table"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
+
+<script type="module">
+import { api, el, formatDate, formatPrice, mountNav } from './cats.js';
+import { createPicker, formatPeriod, shiftIso, snapIso, todayIso } from './picker.js';
+
+const $ = id => document.getElementById(id);
+const count = n => n.toLocaleString('en-ZA');
+const plural = (n, word) => `${count(n)} ${word}${n === 1 ? '' : 's'}`;
+const escapeXml = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+// "▲ 12%", "▼ 3%" or "—"; the arrow means the reader never relies on colour alone
+const growthText = g => (g === null ? '—' : `${g >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(g * 100))}%`);
+const growthClass = g => (g === null ? '' : g >= 0 ? 'up' : 'down');
+
+// ---------- Column chart ----------
+
+// Single-series columns with an optional trend line, and a tooltip on hover or keyboard focus.
+// `tip(i)` gives the tooltip text and `showLabel(i)` picks which columns get a value on top.
+function columnChart(container, { labels, values, line = null, tip, showLabel = () => false }) {
+    const tooltip = el('div', { className: 'tooltip' });
+
+    function draw() {
+        const width = Math.max(container.clientWidth, 260);
+        const height = 240;
+        const pad = { top: 24, right: 8, bottom: 26, left: 40 };
+        const innerW = width - pad.left - pad.right;
+        const innerH = height - pad.top - pad.bottom;
+
+        // Clean whole-number ticks, about four steps
+        const top = Math.max(...values, ...(line || []), 1);
+        const raw = top / 4;
+        const magnitude = 10 ** Math.floor(Math.log10(Math.max(raw, 1)));
+        const step = Math.max(1, [1, 2, 5, 10].map(f => f * magnitude).find(s => s >= raw));
+        const max = Math.ceil(top / step) * step;
+        const y = v => pad.top + innerH - (v / max) * innerH;
+        const compact = v => (v >= 1000 ? `${+(v / 1000).toFixed(1)}K` : String(v));
+
+        const band = innerW / values.length;
+        const barW = Math.min(24, Math.max(band * 0.7, 1));
+        const labelEvery = Math.max(1, Math.ceil(values.length / Math.floor(innerW / 54)));
+        const parts = [];
+
+        for (let t = 0; t <= max; t += step) {
+            parts.push(`<line class="grid-line" x1="${pad.left}" x2="${width - pad.right}" y1="${y(t)}" y2="${y(t)}"/>`);
+            parts.push(`<text class="axis" x="${pad.left - 8}" y="${y(t) + 4}" text-anchor="end">${compact(t)}</text>`);
+        }
+
+        values.forEach((v, i) => {
+            const cx = pad.left + band * i + band / 2;
+            const x = cx - barW / 2;
+            const base = y(0);
+            if (v > 0) {
+                // Rounded data end, square at the baseline
+                const yt = y(v);
+                const r = Math.min(4, base - yt, barW / 2);
+                parts.push(`<path class="bar" data-i="${i}" d="M${x},${base} V${yt + r} Q${x},${yt} ${x + r},${yt} H${x + barW - r} Q${x + barW},${yt} ${x + barW},${yt + r} V${base} Z"/>`);
+                if (showLabel(i)) parts.push(`<text class="bar-label" x="${cx}" y="${yt - 6}" text-anchor="middle">${compact(v)}</text>`);
+            }
+            if (i % labelEvery === 0) {
+                parts.push(`<text class="axis" x="${cx}" y="${height - 8}" text-anchor="middle">${escapeXml(labels[i])}</text>`);
+            }
+        });
+
+        if (line) {
+            const points = line.map((v, i) => `${pad.left + band * i + band / 2},${y(v)}`).join(' ');
+            parts.push(`<polyline class="trend-line" points="${points}"/>`);
+        }
+        parts.push(`<circle class="trend-dot" r="4" cx="-10" cy="-10" visibility="hidden"/>`);
+
+        // Invisible hit areas covering each whole column slot, bigger than the bar
+        values.forEach((_, i) => {
+            parts.push(`<rect class="hit" data-i="${i}" tabindex="0" aria-label="${escapeXml(tip(i))}" x="${pad.left + band * i}" y="${pad.top}" width="${band}" height="${innerH}"/>`);
+        });
+
+        container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" height="${height}" role="img">${parts.join('')}</svg>`;
+        container.append(tooltip);
+        const dot = container.querySelector('.trend-dot');
+
+        const show = i => {
+            container.querySelectorAll('.bar').forEach(b => b.classList.toggle('hover', Number(b.dataset.i) === i));
+            const cx = pad.left + band * i + band / 2;
+            if (line) {
+                dot.setAttribute('cx', cx);
+                dot.setAttribute('cy', y(line[i]));
+                dot.setAttribute('visibility', 'visible');
+            }
+            tooltip.textContent = tip(i);
+            // Keep the tooltip inside the chart near the edges
+            tooltip.style.left = `${Math.min(Math.max(cx, 90), width - 90)}px`;
+            tooltip.style.top = `${Math.min(y(values[i]), line ? y(line[i]) : Infinity)}px`;
+            tooltip.classList.add('show');
+        };
+        const hide = () => {
+            tooltip.classList.remove('show');
+            dot.setAttribute('visibility', 'hidden');
+            container.querySelectorAll('.bar.hover').forEach(b => b.classList.remove('hover'));
+        };
+        container.querySelectorAll('.hit').forEach(hit => {
+            const i = Number(hit.dataset.i);
+            hit.addEventListener('mouseenter', () => show(i));
+            hit.addEventListener('focus', () => show(i));
+            hit.addEventListener('mouseleave', hide);
+            hit.addEventListener('blur', hide);
+        });
+    }
+
+    // Redraw on resize; replace any watcher left from an earlier draw
+    if (container.resizeWatcher) container.resizeWatcher.disconnect();
+    container.resizeWatcher = new ResizeObserver(draw);
+    container.resizeWatcher.observe(container);
+}
+
+// Average of the last `size` values at each point, to show the trend through the noise
+function movingAverage(values, size) {
+    return values.map((_, i) => {
+        const win = values.slice(Math.max(0, i - size + 1), i + 1);
+        return win.reduce((a, b) => a + b, 0) / win.length;
+    });
+}
+
+// ---------- Sales over time ----------
+
+const today = todayIso();
+let group = 'month';
+let firstSale = '2000-01-01';
+
+const fromPicker = createPicker({ mode: group, value: shiftIso(today, 'month', -11), label: 'start', onChange: () => rangeChanged('from') });
+const toPicker = createPicker({ mode: group, value: today, label: 'end', onChange: () => rangeChanged('to') });
+$('from').replaceWith(fromPicker.element);
+$('to').replaceWith(toPicker.element);
+
+const AVERAGE = { day: { size: 7, label: '7-day average' }, month: { size: 3, label: '3-month average' }, year: null };
+const PERIOD_WORD = { day: 'day', month: 'month', year: 'year' };
+
+function setActive(selector, attr, value) {
+    document.querySelectorAll(selector).forEach(b => b.classList.toggle('active', b.dataset[attr] === value));
+}
+
+function setGroup(g) {
+    group = g;
+    fromPicker.setMode(g);
+    toPicker.setMode(g);
+    setActive('#group button', 'group', g);
+}
+
+// Keep From before To whichever one was just changed
+function rangeChanged(which) {
+    if (fromPicker.value > toPicker.value) {
+        if (which === 'from') toPicker.value = fromPicker.value;
+        else fromPicker.value = toPicker.value;
+    }
+    setActive('#presets .chip', 'preset', null);
+    loadTrend();
+}
+
+const PRESETS = {
+    '30d': () => ['day', shiftIso(today, 'day', -29)],
+    '12m': () => ['month', shiftIso(today, 'month', -11)],
+    '5y': () => ['year', shiftIso(today, 'year', -4)],
+    all: () => ['year', firstSale],
+};
+
+function applyPreset(name) {
+    const [g, from] = PRESETS[name]();
+    setGroup(g);
+    toPicker.value = today;
+    fromPicker.value = from;
+    setActive('#presets .chip', 'preset', name);
+    loadTrend();
+}
+
+document.querySelectorAll('#group button').forEach(b => b.addEventListener('click', () => {
+    const g = b.dataset.group;
+    if (g === group) return;
+    setGroup(g);
+    // Days get crowded fast: show the last 30 if the range is long
+    if (g === 'day' && (Date.parse(toPicker.value) - Date.parse(fromPicker.value)) / 86400000 > 366) {
+        fromPicker.value = shiftIso(toPicker.value, 'day', -29);
+    }
+    setActive('#presets .chip', 'preset', null);
+    loadTrend();
+}));
+document.querySelectorAll('#presets .chip').forEach(c => c.addEventListener('click', () => applyPreset(c.dataset.preset)));
+
+let trendRequest = 0;
+
+async function loadTrend() {
+    const ticket = ++trendRequest; // ignore answers to older requests
+    $('trend-error').hidden = true;
+    try {
+        const r = await api(`/api/reports/trend?group=${group}&from=${fromPicker.value}&to=${toPicker.value}`);
+        if (ticket !== trendRequest) return;
+        if (r.first_sale && r.first_sale !== firstSale) {
+            firstSale = r.first_sale;
+            fromPicker.setLimits({ min: firstSale });
+            toPicker.setLimits({ min: firstSale });
+            monthPicker.setLimits({ min: firstSale });
+        }
+        renderTrend(r);
+    } catch (err) {
+        if (ticket !== trendRequest) return;
+        if (err.status === 401) return goToLogin();
+        $('trend-error').textContent = err.message;
+        $('trend-error').hidden = false;
+    }
+}
+
+function renderTrend(r) {
+    const n = r.periods.length;
+    const word = PERIOD_WORD[r.group];
+    const nowStart = snapIso(today, r.group);
+    const isPartial = p => p.start === nowStart;
+    const longName = p => `${formatPeriod(p.start, r.group, true)}${isPartial(p) ? ' (so far)' : ''}`;
+    const first = r.periods[0];
+    const last = r.periods[n - 1];
+
+    $('trend-sub').textContent = `${plural(n, word)}, ${formatPeriod(first.start, r.group, true)} to ${formatPeriod(last.start, r.group, true)}`
+        + (isPartial(last) ? ` · ${formatPeriod(last.start, r.group, true)} is still in progress` : '');
+
+    // Tiles
+    $('t-total').textContent = count(r.total);
+    $('t-total-sub').textContent = `About ${count(Math.round(r.total / n))} a ${word}`;
+
+    $('t-growth').textContent = growthText(r.growth);
+    $('t-growth').className = `value ${r.growth === null ? '' : r.growth >= 0 ? 'growth-up' : 'growth-down'}`;
+    $('t-growth-sub').textContent = r.previous.count
+        ? `${count(r.total)} vs ${count(r.previous.count)} in the ${plural(n, word).replace(/^1 /, '')} before`
+        : 'No sales in the period before to compare with';
+
+    $('t-revenue').textContent = formatPrice(r.revenue_cents);
+    $('t-revenue-sub').textContent = r.revenue_growth === null ? '' : `${growthText(r.revenue_growth)} vs the period before`;
+    $('t-revenue-sub').className = `delta ${growthClass(r.revenue_growth)}`;
+
+    const best = r.periods.reduce((a, b) => (b.count > a.count ? b : a));
+    $('t-best-label').textContent = `Best ${word}`;
+    $('t-best').textContent = best.count ? formatPeriod(best.start, r.group, true) : '—';
+    $('t-best-sub').textContent = best.count ? `${plural(best.count, 'cat')} sold` : '';
+
+    // Chart
+    const values = r.periods.map(p => p.count);
+    const avg = AVERAGE[r.group] && n > 2 ? AVERAGE[r.group] : null;
+    const line = avg ? movingAverage(values, avg.size) : null;
+    $('trend-legend').replaceChildren(...(line
+        ? [
+            el('span', {}, [el('i', { className: 'swatch' }), 'Cats sold']),
+            el('span', {}, [el('i', { className: 'line-key' }), avg.label]),
+        ]
+        : []));
+
+    const maxIndex = values.indexOf(Math.max(...values));
+    columnChart($('trend-chart'), {
+        labels: r.periods.map(p => formatPeriod(p.start, r.group)),
+        values,
+        line,
+        showLabel: i => n <= 40 && (i === n - 1 || i === maxIndex),
+        tip: i => {
+            const p = r.periods[i];
+            const parts = [`${longName(p)}: ${plural(p.count, 'cat')} sold`, formatPrice(p.revenue_cents)];
+            if (p.growth !== null) parts.push(`${growthText(p.growth)} vs previous ${word}`);
+            if (line) parts.push(`${avg.label} ${Math.round(line[i])}`);
+            return parts.join(' · ');
+        },
+    });
+
+    // Table, newest first
+    $('period-head').textContent = word[0].toUpperCase() + word.slice(1);
+    $('trend-table').replaceChildren(...[...r.periods].reverse().map(p => el('tr', {}, [
+        el('td', { textContent: longName(p) }),
+        el('td', { className: 'num', textContent: count(p.count) }),
+        el('td', { className: 'num', textContent: formatPrice(p.revenue_cents) }),
+        el('td', { className: `num ${p.growth === null ? '' : p.growth >= 0 ? 'growth-up' : 'growth-down'}`, textContent: growthText(p.growth) }),
+    ])));
+}
+
+// ---------- One month in detail ----------
+
+const monthPicker = createPicker({ mode: 'month', value: today, label: 'month', onChange: v => loadMonth(v.slice(0, 7)) });
+monthPicker.element.classList.add('align-right');
+$('month').replaceWith(monthPicker.element);
+
+const monthName = (ym, opts = { month: 'long', year: 'numeric' }) => {
+    const [y, m] = ym.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString('en-ZA', opts);
+};
+
+function renderMonth(r) {
+    const name = monthName(r.month);
+    const prevName = monthName(r.history[r.history.length - 2].month, { month: 'long' });
+    $('subtitle').textContent = `How the shop did in ${name}`;
+
+    $('sold-count').textContent = count(r.sold_count);
+    const diff = r.sold_count - r.previous_count;
+    const delta = $('sold-delta');
+    delta.className = `delta ${diff > 0 ? 'up' : diff < 0 ? 'down' : ''}`;
+    delta.textContent = diff > 0 ? `▲ ${count(diff)} more than ${prevName}`
+        : diff < 0 ? `▼ ${count(-diff)} fewer than ${prevName}`
+        : `Same as ${prevName}`;
+
+    $('revenue').textContent = formatPrice(r.revenue_cents);
+    $('average').textContent = r.sold_count ? `About ${formatPrice(r.revenue_cents / r.sold_count)} per cat` : 'No sales this month';
+
+    $('stock').textContent = count(r.stock.available + r.stock.reserved);
+    $('stock-detail').textContent = `${count(r.stock.available)} available · ${count(r.stock.reserved)} reserved`;
+
+    $('daily-sub').textContent = r.sold_count ? `${plural(r.sold_count, 'cat')} sold in ${name}` : `No cats sold in ${name}`;
+    const shortMonth = monthName(r.month, { month: 'short' });
+    const busiest = r.by_day.indexOf(Math.max(...r.by_day));
+    columnChart($('daily-chart'), {
+        labels: r.by_day.map((_, i) => String(i + 1)),
+        values: r.by_day,
+        showLabel: i => i === busiest,
+        tip: i => `${i + 1} ${shortMonth}: ${plural(r.by_day[i], 'cat')} sold`,
+    });
+
+    // Breeds, value written at the end of each bar
+    const most = Math.max(...r.by_breed.map(b => b.count), 1);
+    $('breeds').replaceChildren(...(r.by_breed.length
+        ? r.by_breed.map(b => el('li', { className: 'row' }, [
+            el('span', { textContent: b.breed }),
+            el('strong', { textContent: count(b.count) }),
+            el('div', { className: 'track' }, [
+                Object.assign(el('div', { className: 'fill' }), { style: `width: ${(b.count / most) * 100}%` }),
+            ]),
+        ]))
+        : [el('li', { className: 'hint', textContent: 'No sales to show yet.' })]));
+
+    $('sold-sub').textContent = `Every cat marked as sold in ${name}`;
+    $('sold-table').replaceChildren(...(r.sold.length
+        ? [...r.sold].reverse().map(c => el('tr', {}, [
+            el('td', {}, [el('a', { href: `cat.html?id=${c.id}`, textContent: c.name })]),
+            el('td', { textContent: c.breed }),
+            el('td', { textContent: formatDate(c.sold_at) }),
+            el('td', { className: 'num', textContent: formatPrice(c.price_cents) }),
+        ]))
+        : [el('tr', {}, [el('td', { colSpan: 4, className: 'hint', textContent: 'No cats sold this month yet.' })])]));
+
+    $('report').hidden = false;
+}
+
+async function loadMonth(month) {
+    try {
+        renderMonth(await api(`/api/reports/sales?month=${month}`));
+    } catch (err) {
+        if (err.status === 401) return goToLogin();
+        $('subtitle').textContent = `Could not load the report: ${err.message}`;
+    }
+}
+
+function goToLogin() {
+    location.href = 'login.html?next=report.html';
+}
+
+mountNav('report').then(user => {
+    if (!user) return goToLogin();
+    applyPreset('12m');
+    loadMonth(today.slice(0, 7));
+});
+</script>
+</body>
+</html>

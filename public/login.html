@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log in · Selling Cats</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Nunito:wght@400;600;700;800&display=swap">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header id="site-nav"></header>
+
+    <main class="page">
+        <section class="auth">
+            <div id="picture"></div>
+            <h1>Welcome back</h1>
+            <p>Log in to list cats and see your sales.</p>
+            <form id="form" class="stack">
+                <label>Email <input class="field" name="email" type="email" autocomplete="email" required></label>
+                <label>Password <input class="field" name="password" type="password" autocomplete="current-password" required></label>
+                <button type="submit" class="btn">Log in</button>
+            </form>
+            <p id="error" class="error"></p>
+            <p class="switch">New here? <a id="signup-link" href="signup.html">Create an account</a></p>
+        </section>
+    </main>
+
+<script type="module">
+import { api, catPicture, mountNav, safeNext } from './cats.js';
+
+document.getElementById('picture').replaceWith(catPicture({ name: 'Cat', fur_color: '#e08a3c' }));
+document.getElementById('signup-link').search = location.search;
+
+const form = document.getElementById('form');
+const error = document.getElementById('error');
+
+form.addEventListener('submit', async event => {
+    event.preventDefault();
+    error.textContent = '';
+    try {
+        await api('/api/login', { method: 'POST', body: { email: form.email.value, password: form.password.value } });
+        location.href = safeNext();
+    } catch (err) {
+        error.textContent = err.message;
+    }
+});
+
+mountNav('login').then(user => { if (user) location.href = safeNext(); });
+</script>
+</body>
+</html>

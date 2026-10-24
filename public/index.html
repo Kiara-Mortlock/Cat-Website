@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Selling Cats</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Nunito:wght@400;600;700;800&display=swap">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header id="site-nav"></header>
+
+    <main class="page">
+        <section class="hero">
+            <h1>Find your new best friend</h1>
+            <p>Friendly, healthy cats and kittens looking for a warm home.</p>
+        </section>
+
+        <!-- Made-up details for the demo shop: 555 numbers and .example addresses never reach anyone real -->
+        <section class="contact" aria-label="Contact us">
+            <div class="contact-item">
+                <span class="contact-icon" aria-hidden="true">📞</span>
+                <div><strong>Call or WhatsApp</strong><a href="tel:+27215550123">021 555 0123</a></div>
+            </div>
+            <div class="contact-item">
+                <span class="contact-icon" aria-hidden="true">✉️</span>
+                <div><strong>Email us</strong><a href="mailto:hello@sellingcats.example">hello@sellingcats.example</a></div>
+            </div>
+            <div class="contact-item">
+                <span class="contact-icon" aria-hidden="true">📍</span>
+                <div><strong>Visit the cattery</strong><span>12 Whisker Lane, Gardens, Cape Town, 8001</span></div>
+            </div>
+            <div class="contact-item">
+                <span class="contact-icon" aria-hidden="true">🕘</span>
+                <div><strong>Opening hours</strong><span>Mon–Fri 9am–5pm · Sat 9am–1pm</span></div>
+            </div>
+        </section>
+
+        <div class="toolbar">
+            <input id="search" type="search" placeholder="Search by name, breed or colour">
+            <select id="status">
+                <option value="">All cats</option>
+                <option value="available" selected>Available</option>
+                <option value="reserved">Reserved</option>
+                <option value="sold">Sold</option>
+            </select>
+            <select id="sort">
+                <option value="newest">Newest first</option>
+                <option value="price-asc">Price: low to high</option>
+                <option value="price-desc">Price: high to low</option>
+                <option value="age">Youngest first</option>
+            </select>
+            <button id="add" class="btn" hidden>+ List a cat</button>
+        </div>
+
+        <div id="grid" class="grid"></div>
+        <p id="more" class="more" hidden></p>
+    </main>
+
+    <dialog id="add-dialog">
+        <form id="add-form">
+            <h2>List a cat for sale</h2>
+            <div class="form-grid">
+                <label>Name <input class="field" name="name" required maxlength="60"></label>
+                <label>Breed <input class="field" name="breed" required maxlength="60" placeholder="e.g. Ragdoll"></label>
+                <label>Sex
+                    <select class="field" name="sex"><option>Female</option><option>Male</option></select>
+                </label>
+                <label>Coat <input class="field" name="coat" maxlength="60" placeholder="e.g. Ginger tabby"></label>
+                <label>Age: years <input class="field" name="years" type="number" min="0" max="25" value="0" required></label>
+                <label>Age: months <input class="field" name="months" type="number" min="0" max="11" value="3" required></label>
+                <label>Price (R) <input class="field" name="price" type="number" min="0" step="1" required></label>
+                <label>Fur colour <span class="hint">Used to draw the cat if there is no photo</span>
+                    <input class="field" name="fur_color" type="color" value="#e08a3c">
+                </label>
+                <label class="full">Photo link <span class="hint">Optional. Paste a link to a photo starting with https://</span>
+                    <input class="field" name="photo_url" type="url" placeholder="https://">
+                </label>
+                <label class="full">About this cat <textarea class="field" name="description" rows="3" maxlength="1000"></textarea></label>
+                <label class="full check"><input type="checkbox" name="vaccinated" checked> Vaccinated</label>
+            </div>
+            <p id="form-error" class="error"></p>
+            <div class="actions">
+                <button type="button" id="cancel" class="btn secondary">Cancel</button>
+                <button type="submit" class="btn">List cat</button>
+            </div>
+        </form>
+    </dialog>
+
+<script type="module">
+import { api, catPicture, el, formatAge, formatPrice, mountNav, STATUS_LABELS } from './cats.js';
+
+const grid = document.getElementById('grid');
+const search = document.getElementById('search');
+const statusFilter = document.getElementById('status');
+const sort = document.getElementById('sort');
+const dialog = document.getElementById('add-dialog');
+const form = document.getElementById('add-form');
+const formError = document.getElementById('form-error');
+const addButton = document.getElementById('add');
+
+const more = document.getElementById('more');
+
+function card(cat) {
+    const tags = [cat.breed, cat.sex, formatAge(cat.age_months)];
+    if (cat.vaccinated) tags.push('Vaccinated');
+    return el('a', { className: `card ${cat.status}`, href: `cat.html?id=${cat.id}` }, [
+        catPicture(cat),
+        el('span', { className: `status ${cat.status}`, textContent: STATUS_LABELS[cat.status] }),
+        el('div', { className: 'body' }, [
+            el('div', { className: 'title' }, [
+                el('h2', { textContent: cat.name }),
+                el('span', { className: 'price', textContent: formatPrice(cat.price_cents) }),
+            ]),
+            el('div', { className: 'meta' }, tags.map(t => el('span', { className: 'tag', textContent: t }))),
+            el('p', { textContent: cat.coat }),
+        ]),
+    ]);
+}
+
+// Searching, filtering and sorting happen on the server, which sends back one page of cats
+let request = 0;
+
+async function load() {
+    const ticket = ++request; // ignore answers to older searches
+    const params = new URLSearchParams({ q: search.value.trim(), status: statusFilter.value, sort: sort.value });
+    try {
+        const { cats, total } = await api(`/api/cats?${params}`);
+        if (ticket !== request) return;
+        const filtered = search.value.trim() || statusFilter.value;
+        grid.replaceChildren(...(cats.length
+            ? cats.map(card)
+            : [el('p', { className: 'empty', textContent: filtered ? 'No cats match your search.' : 'No cats listed yet.' })]));
+        more.hidden = total <= cats.length;
+        more.textContent = `Showing ${cats.length} of ${total.toLocaleString('en-ZA')} cats. Search or filter to narrow it down.`;
+    } catch (err) {
+        if (ticket !== request) return;
+        grid.replaceChildren(el('p', { className: 'empty', textContent: `Could not load the cats: ${err.message}` }));
+    }
+}
+
+let typing;
+search.addEventListener('input', () => {
+    clearTimeout(typing);
+    typing = setTimeout(load, 250);
+});
+[statusFilter, sort].forEach(c => c.addEventListener('input', load));
+
+addButton.addEventListener('click', () => {
+    formError.textContent = '';
+    dialog.showModal();
+});
+document.getElementById('cancel').addEventListener('click', () => dialog.close());
+
+form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const f = form.elements;
+    try {
+        await api('/api/cats', {
+            method: 'POST',
+            body: {
+                name: f.name.value,
+                breed: f.breed.value,
+                sex: f.sex.value,
+                coat: f.coat.value,
+                age_months: Number(f.years.value) * 12 + Number(f.months.value),
+                price_cents: Math.round(Number(f.price.value) * 100),
+                fur_color: f.fur_color.value,
+                photo_url: f.photo_url.value,
+                description: f.description.value,
+                vaccinated: f.vaccinated.checked,
+            },
+        });
+        dialog.close();
+        form.reset();
+        statusFilter.value = 'available';
+        sort.value = 'newest';
+        await load();
+    } catch (err) {
+        formError.textContent = err.message;
+    }
+});
+
+mountNav('shop').then(user => (addButton.hidden = !user));
+load();
+</script>
+</body>
+</html>

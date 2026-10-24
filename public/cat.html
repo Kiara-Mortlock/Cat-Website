@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cat · Selling Cats</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Nunito:wght@400;600;700;800&display=swap">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header id="site-nav"></header>
+
+    <main class="page">
+        <a href="index.html" class="back">← Back to the shop</a>
+        <div id="content"><p class="empty">Loading…</p></div>
+    </main>
+
+<script type="module">
+import { api, catPicture, el, formatAge, formatDate, formatPrice, mountNav, STATUS_LABELS } from './cats.js';
+
+const content = document.getElementById('content');
+const id = new URLSearchParams(location.search).get('id');
+let user = null;
+
+function managementButtons(cat, setStatus, remove) {
+    if (!user) {
+        return [el('p', { className: 'hint' }, [
+            el('a', { href: `login.html?next=${encodeURIComponent(`cat.html?id=${cat.id}`)}`, textContent: 'Log in' }),
+            ' to reserve or manage this cat.',
+        ])];
+    }
+    const button = (label, cls, onclick) => Object.assign(el('button', { className: `btn ${cls}`, textContent: label }), { onclick });
+    const buttons = [];
+    if (cat.status === 'available') buttons.push(button('Reserve this cat', '', () => setStatus('reserved')));
+    if (cat.status !== 'sold') buttons.push(button('Mark as sold', cat.status === 'reserved' ? '' : 'secondary', () => setStatus('sold')));
+    if (cat.status !== 'available') buttons.push(button('Make available again', 'secondary', () => setStatus('available')));
+    buttons.push(button('Delete listing', 'danger', remove));
+    return buttons;
+}
+
+function render(cat) {
+    document.title = `${cat.name} · Selling Cats`;
+    const facts = [
+        ['Breed', cat.breed],
+        ['Sex', cat.sex],
+        ['Age', formatAge(cat.age_months)],
+        ['Coat', cat.coat || '—'],
+        ['Vaccinated', cat.vaccinated ? 'Yes' : 'Not yet'],
+        ['Listed', formatDate(cat.created_at)],
+    ];
+    if (cat.sold_at) facts.push(['Sold', formatDate(cat.sold_at)]);
+
+    const error = el('p', { className: 'error' });
+
+    const setStatus = async status => {
+        try {
+            render(await api(`/api/cats/${cat.id}`, { method: 'PATCH', body: { status } }));
+        } catch (err) {
+            error.textContent = err.message;
+        }
+    };
+    const remove = async () => {
+        if (!confirm(`Delete ${cat.name}'s listing? This cannot be undone.`)) return;
+        try {
+            await api(`/api/cats/${cat.id}`, { method: 'DELETE' });
+            location.href = 'index.html';
+        } catch (err) {
+            error.textContent = err.message;
+        }
+    };
+
+    content.replaceChildren(el('div', { className: 'detail' }, [
+        catPicture(cat),
+        el('div', {}, [
+            el('span', { className: `status status-inline ${cat.status}`, textContent: STATUS_LABELS[cat.status] }),
+            el('h1', { textContent: cat.name }),
+            el('div', { className: 'price', textContent: formatPrice(cat.price_cents) }),
+            el('dl', { className: 'facts' }, facts.flatMap(([k, v]) => [el('dt', { textContent: k }), el('dd', { textContent: v })])),
+            el('p', { className: 'description', textContent: cat.description }),
+            el('div', { className: 'manage' }, managementButtons(cat, setStatus, remove)),
+            error,
+        ]),
+    ]));
+}
+
+async function main() {
+    user = await mountNav('shop');
+    try {
+        render(await api(`/api/cats/${encodeURIComponent(id)}`));
+    } catch (err) {
+        content.replaceChildren(el('p', { className: 'empty', textContent: err.status === 404 ? 'We could not find that cat.' : err.message }));
+    }
+}
+
+main();
+</script>
+</body>
+</html>

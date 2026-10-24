@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign up · Selling Cats</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Nunito:wght@400;600;700;800&display=swap">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header id="site-nav"></header>
+
+    <main class="page">
+        <section class="auth">
+            <div id="picture"></div>
+            <h1>Create an account</h1>
+            <p>Sign up to list cats and track your sales.</p>
+            <form id="form" class="stack">
+                <label>Your name <input class="field" name="name" autocomplete="name" required maxlength="80"></label>
+                <label>Email <input class="field" name="email" type="email" autocomplete="email" required></label>
+                <label>Password <span class="hint">At least 8 characters</span>
+                    <input class="field" name="password" type="password" autocomplete="new-password" minlength="8" required>
+                </label>
+                <label>Confirm password <input class="field" name="confirm" type="password" autocomplete="new-password" required></label>
+                <button type="submit" class="btn">Sign up</button>
+            </form>
+            <p id="error" class="error"></p>
+            <p class="switch">Already have an account? <a id="login-link" href="login.html">Log in</a></p>
+        </section>
+    </main>
+
+<script type="module">
+import { api, catPicture, mountNav, safeNext } from './cats.js';
+
+document.getElementById('picture').replaceWith(catPicture({ name: 'Cat', fur_color: '#8a96a3' }));
+document.getElementById('login-link').search = location.search;
+
+const form = document.getElementById('form');
+const error = document.getElementById('error');
+
+form.addEventListener('submit', async event => {
+    event.preventDefault();
+    error.textContent = '';
+    if (form.password.value !== form.confirm.value) {
+        error.textContent = 'The two passwords do not match.';
+        return;
+    }
+    try {
+        await api('/api/signup', {
+            method: 'POST',
+            body: { name: form.elements.name.value, email: form.email.value, password: form.password.value },
+        });
+        location.href = safeNext();
+    } catch (err) {
+        error.textContent = err.message;
+    }
+});
+
+mountNav('signup').then(user => { if (user) location.href = safeNext(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+node_modules/
+.env
+# Lock files Office creates while a document is open
+~$*
