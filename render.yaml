@@ -1,0 +1,24 @@
+# Render Blueprint: creates the database and the web server, and connects them.
+# In Render: New → Blueprint → pick this repository → Apply.
+databases:
+  - name: cat-website-db
+    plan: free
+    databaseName: selling_cats
+    user: cats
+
+services:
+  - type: web
+    name: cat-website
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    # Sets up the tables and starter cats (safe to repeat), adds sample sales once, then starts the shop
+    startCommand: npm run setup-db && npm run seed-sales -- --if-empty && npm start
+    healthCheckPath: /api/me
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cat-website-db
+          property: connectionString

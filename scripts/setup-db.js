@@ -16,20 +16,25 @@ async function main() {
         throw new Error(`Database name "${dbName}" should only use lowercase letters, numbers and underscores.`);
     }
 
-    // Connect to the built-in "postgres" database to create ours
-    const adminUrl = new URL(url);
-    adminUrl.pathname = '/postgres';
-    const admin = new Client({ connectionString: adminUrl.toString() });
-    await admin.connect();
-    const exists = await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
-    if (exists.rowCount === 0) {
+    // Hosted databases (like Render's) already exist, so only create ours when it's missing
+    let db = new Client({ connectionString: url.toString() });
+    try {
+        await db.connect();
+    } catch (err) {
+        if (err.code !== '3D000') throw err; // 3D000 = database does not exist
+
+        // Connect to the built-in "postgres" database to create ours
+        const adminUrl = new URL(url);
+        adminUrl.pathname = '/postgres';
+        const admin = new Client({ connectionString: adminUrl.toString() });
+        await admin.connect();
         await admin.query(`CREATE DATABASE ${dbName}`);
         console.log(`Created database ${dbName}`);
-    }
-    await admin.end();
+        await admin.end();
 
-    const db = new Client({ connectionString: url.toString() });
-    await db.connect();
+        db = new Client({ connectionString: url.toString() });
+        await db.connect();
+    }
     for (const file of ['schema.sql', 'seed.sql']) {
         await db.query(fs.readFileSync(path.join(__dirname, '..', 'db', file), 'utf8'));
         console.log(`Ran db/${file}`);

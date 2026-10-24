@@ -8,6 +8,10 @@ const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const app = express();
 const scrypt = promisify(crypto.scrypt);
+const PRODUCTION = process.env.NODE_ENV === 'production';
+
+// Hosts like Render sit in front of the app and handle https
+if (PRODUCTION) app.set('trust proxy', 1);
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -57,7 +61,13 @@ async function startSession(res, userId) {
         `INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, now() + make_interval(days => $3))`,
         [tokenHash(token), userId, SESSION_DAYS]
     );
-    res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', maxAge: SESSION_DAYS * 86400000, path: '/' });
+    res.cookie(COOKIE, token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: PRODUCTION, // only sent over https once the site is live
+        maxAge: SESSION_DAYS * 86400000,
+        path: '/',
+    });
 }
 
 // Attaches req.user when the browser has a valid session cookie
